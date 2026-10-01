@@ -103,6 +103,60 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============================================================
     // vCARD DOWNLOAD (built from config)
     // ============================================================
+    function getContactPhoto() {
+        // 1. If configured in config.js and valid, use it
+        if (cfg.vcard && cfg.vcard.photoBase64 && cfg.vcard.photoBase64.trim().length > 100) {
+            const format = (cfg.vcard.photoFormat || 'JPEG').toUpperCase();
+            return {
+                data: cfg.vcard.photoBase64.trim(),
+                type: format
+            };
+        }
+
+        // 2. Fallback: dynamically generate square avatar from the page logo
+        try {
+            const logo = document.getElementById('logo');
+            if (logo && logo.complete && logo.naturalWidth > 0) {
+                const canvas = document.createElement('canvas');
+                const size = 400;
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.fillRect(0, 0, size, size);
+
+                    const padding = 28;
+                    const innerSize = size - padding * 2;
+                    const w = logo.naturalWidth;
+                    const h = logo.naturalHeight;
+                    const ratio = w / h;
+                    let drawW, drawH;
+                    if (ratio >= 1) {
+                        drawW = innerSize;
+                        drawH = innerSize / ratio;
+                    } else {
+                        drawH = innerSize;
+                        drawW = innerSize * ratio;
+                    }
+                    const dx = (size - drawW) / 2;
+                    const dy = (size - drawH) / 2;
+
+                    ctx.drawImage(logo, dx, dy, drawW, drawH);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+                    const parts = dataUrl.split(',');
+                    if (parts.length > 1 && parts[1].length > 100) {
+                        return { data: parts[1], type: 'JPEG' };
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('Dynamic logo extraction from canvas:', err);
+        }
+
+        return null;
+    }
+
     const saveContactBtn = document.getElementById('btn-save-contact');
     if (saveContactBtn) {
         saveContactBtn.addEventListener('click', (e) => {
@@ -111,18 +165,21 @@ document.addEventListener('DOMContentLoaded', () => {
             // Build social URL lines dynamically
             const socialUrlLines = cfg.socials.map(s =>
                 `URL;type=${s.platform}:${s.url}`
-            ).join('\n');
+            ).join('\r\n');
 
             const socialProfileLines = cfg.socials.map(s =>
                 `X-SOCIALPROFILE;type=${s.platform.toLowerCase()}:${s.url}`
-            ).join('\n');
+            ).join('\r\n');
 
             // Build phone number lines dynamically (supports multiple numbers)
             const phoneLines = cfg.contact.phones.map(p =>
                 `TEL;TYPE=${p.label.toUpperCase()},VOICE:${p.number}`
-            ).join('\n');
+            ).join('\r\n');
 
-            const vcardContent = [
+            const photoInfo = getContactPhoto();
+            const photoLine = photoInfo ? `PHOTO;ENCODING=b;TYPE=${photoInfo.type}:${photoInfo.data}` : '';
+
+            const vcardLines = [
                 'BEGIN:VCARD',
                 'VERSION:3.0',
                 // Company name as the primary display name for the contact
@@ -131,16 +188,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 `ORG:${cfg.company.name}`,
                 `TITLE:${cfg.person.fullName} - ${cfg.person.title}`,
                 `NOTE:${cfg.vcard.contactNote}`,
-                `PHOTO;ENCODING=b;TYPE=PNG:${cfg.vcard.photoBase64}`,
-                phoneLines,
+            ];
+
+            if (photoLine) {
+                vcardLines.push(photoLine);
+            }
+
+            if (phoneLines) {
+                vcardLines.push(phoneLines);
+            }
+
+            vcardLines.push(
                 `EMAIL;TYPE=PREF,INTERNET:${cfg.contact.email}`,
                 `URL;type=Location:${cfg.contact.locationUrl}`,
-                `URL;type=WhatsApp:https://wa.me/${cfg.contact.whatsapp}`,
-                socialUrlLines,
-                socialProfileLines,
+                `URL;type=WhatsApp:https://wa.me/${cfg.contact.whatsapp}`
+            );
+
+            if (socialUrlLines) vcardLines.push(socialUrlLines);
+            if (socialProfileLines) vcardLines.push(socialProfileLines);
+
+            vcardLines.push(
                 `ADR;TYPE=WORK:;;${cfg.vcard.addressStreet};${cfg.vcard.addressCity};${cfg.vcard.addressState};;${cfg.vcard.addressCountry}`,
                 'END:VCARD',
-            ].join('\n');
+                ''
+            );
+
+            const vcardContent = vcardLines.filter(line => line.length > 0).join('\r\n');
 
             const blob = new Blob([vcardContent], { type: 'text/vcard;charset=utf-8' });
             const url = window.URL.createObjectURL(blob);
@@ -152,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
             document.body.removeChild(link);
 
             // Clean up
-            setTimeout(() => window.URL.revokeObjectURL(url), 100);
+            setTimeout(() => window.URL.revokeObjectURL(url), 1000);
         });
     }
 });
