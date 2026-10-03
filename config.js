@@ -10,7 +10,7 @@ const BUSINESS_CONFIG = {
     person: {
         firstName: "Euro",
         middleName: "Green",
-        lastName: "Motors",
+        lastName: "Motors  Pvt. Ltd.",
         fullName: "Euro Green Motors Pvt. Ltd.",       // Displayed in header & vCard
         title: "",              // Job title / designation
     },
